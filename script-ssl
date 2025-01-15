@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Création du répertoire pour stocker les certificats
+mkdir -p certificates
+cd certificates
+
+# 1. Création de l'autorité de certification (CA)
+openssl req -x509 -sha256 -days 3650 -newkey rsa:4096 -keyout rootCA.key -out rootCA.crt -subj "/C=FR/ST=Paris/L=Paris/O=MonOrganisation/OU=IT/CN=RootCA" -passout pass:changeit
+
+# 2. Génération des certificats pour le serveur
+openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj "/C=FR/ST=Paris/L=Paris/O=MonOrganisation/OU=IT/CN=localhost"
+
+openssl x509 -req -extfile <(printf "subjectAltName=DNS:localhost,IP:127.0.0.1") -days 365 -in server.csr -CA rootCA.crt -CAkey rootCA.key -CAcreateserial -out server.crt -passin pass:changeit
+
+# 3. Génération des certificats pour le client
+openssl req -newkey rsa:2048 -nodes -keyout client.key -out client.csr -subj "/C=FR/ST=Paris/L=Paris/O=MonOrganisation/OU=IT/CN=client"
+
+openssl x509 -req -days 365 -in client.csr -CA rootCA.crt -CAkey rootCA.key -CAcreateserial -out client.crt -passin pass:changeit
+
+# 4. Création des keystores pour Spring Boot
+# Keystore serveur
+openssl pkcs12 -export -in server.crt -inkey server.key -name server -out server.p12 -passout pass:server123
+
+# Keystore client
+openssl pkcs12 -export -in client.crt -inkey client.key -name client -out client.p12 -passout pass:client123
+
+# 5. Création des truststores
+# Truststore serveur (contient le certificat du client)
+keytool -import -file client.crt -alias client -keystore server-truststore.jks -storepass server123 -noprompt
+
+# Truststore client (contient le certificat du serveur)
+keytool -import -file server.crt -alias server -keystore client-truststore.jks -storepass client123 -noprompt
+
+echo "Certificats générés avec succès !"
