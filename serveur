@@ -1,0 +1,104 @@
+// pom.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.0</version>
+    </parent>
+    <groupId>com.example</groupId>
+    <artifactId>ssl-server</artifactId>
+    <version>1.0.0</version>
+    
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+    
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+    </dependencies>
+</project>
+
+// src/main/resources/application.yml
+server:
+  port: 8443
+  ssl:
+    key-store: classpath:server.p12
+    key-store-password: server123
+    key-store-type: PKCS12
+    key-alias: server
+    trust-store: classpath:server-truststore.jks
+    trust-store-password: server123
+    client-auth: need
+
+// src/main/java/com/example/sslserver/ServerApplication.java
+package com.example.sslserver;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class ServerApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(ServerApplication.class, args);
+    }
+}
+
+// src/main/java/com/example/sslserver/SecurityConfig.java
+package com.example.sslserver;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(authz -> authz
+                .requestMatchers("/api/**").authenticated()
+                .anyRequest().authenticated()
+            )
+            .x509()
+            .subjectPrincipalRegex("CN=(.*?)(?:,|$)")
+            .userDetailsService(userDetailsService());
+        
+        return http.build();
+    }
+
+    @Bean
+    public UserDetailsService userDetailsService() {
+        return username -> new User(username, "", 
+            Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")));
+    }
+}
+
+// src/main/java/com/example/sslserver/TestController.java
+package com.example.sslserver;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api")
+public class TestController {
+
+    @GetMapping("/test")
+    public String test() {
+        return "Connexion SSL réussie !";
+    }
+}
