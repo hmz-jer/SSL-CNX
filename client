@@ -1,0 +1,94 @@
+// pom.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.0</version>
+    </parent>
+    <groupId>com.example</groupId>
+    <artifactId>ssl-client</artifactId>
+    <version>1.0.0</version>
+    
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+    
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+    </dependencies>
+</project>
+
+// src/main/resources/application.yml
+server:
+  port: 8080
+
+// src/main/java/com/example/sslclient/ClientApplication.java
+package com.example.sslclient;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import javax.net.ssl.SSLContext;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.ssl.SSLContextBuilder;
+import java.io.FileInputStream;
+import java.security.KeyStore;
+
+@SpringBootApplication
+public class ClientApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(ClientApplication.class, args);
+    }
+
+    @Bean
+    public RestTemplate restTemplate() throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        keyStore.load(new FileInputStream("certificates/client.p12"), "client123".toCharArray());
+
+        KeyStore trustStore = KeyStore.getInstance("JKS");
+        trustStore.load(new FileInputStream("certificates/client-truststore.jks"), "client123".toCharArray());
+
+        SSLContext sslContext = SSLContextBuilder.create()
+                .loadKeyMaterial(keyStore, "client123".toCharArray())
+                .loadTrustMaterial(trustStore, null)
+                .build();
+
+        HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory();
+        requestFactory.setHttpClient(HttpClients.custom()
+                .setSSLContext(sslContext)
+                .build());
+
+        return new RestTemplate(requestFactory);
+    }
+}
+
+// src/main/java/com/example/sslclient/TestController.java
+package com.example.sslclient;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
+
+@RestController
+@RequestMapping("/test")
+public class TestController {
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @GetMapping
+    public String testSSLConnection() {
+        return restTemplate.getForObject("https://localhost:8443/api/test", String.class);
+    }
+}
